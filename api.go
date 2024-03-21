@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 )
 
 type APIServer struct {
@@ -23,6 +25,7 @@ func (s *APIServer) Run() {
 	mux.HandleFunc("GET /account/{id}", makeHTTPHandleFunc(s.handleGetAccount))
 	mux.HandleFunc("GET /account", makeHTTPHandleFunc(s.handleGetAccounts))
 	mux.HandleFunc("POST /account", makeHTTPHandleFunc(s.handleCreateAccount))
+	mux.HandleFunc("DELETE /account/{id}", makeHTTPHandleFunc(s.handleDeleteAccount))
 
 	log.Printf("JSON API Server running on port: %s \n", s.listenAddr)
 
@@ -30,9 +33,17 @@ func (s *APIServer) Run() {
 }
 
 func (s *APIServer) handleGetAccount(w http.ResponseWriter, r *http.Request) error {
-	// account := NewAccount("Ugur", "Emirmustafa")
-	id := r.PathValue("id")
-	return WriteJSON(w, http.StatusOK, id)
+	id, err := getIDParam(r)
+	if err != nil {
+		return err
+	}
+
+	account, err := s.store.GetAccountByID(id)
+	if err != nil {
+		return err
+	}
+
+	return WriteJSON(w, http.StatusOK, account)
 }
 
 func (s *APIServer) handleGetAccounts(w http.ResponseWriter, r *http.Request) error {
@@ -59,6 +70,17 @@ func (s *APIServer) handleCreateAccount(w http.ResponseWriter, r *http.Request) 
 
 	return WriteJSON(w, http.StatusOK, account)
 }
+func (s *APIServer) handleDeleteAccount(w http.ResponseWriter, r *http.Request) error {
+	id, err := getIDParam(r)
+	if err != nil {
+		return err
+	}
+	err = s.store.DeleteAccount(id)
+	if err != nil {
+		return err
+	}
+	return WriteJSON(w, http.StatusOK, map[string]int{"deleted": id})
+}
 
 func WriteJSON(w http.ResponseWriter, status int, v any) error {
 	w.Header().Set("Content-Type", "application/json")
@@ -69,7 +91,7 @@ func WriteJSON(w http.ResponseWriter, status int, v any) error {
 type apiFunc func(http.ResponseWriter, *http.Request) error
 
 type ApiError struct {
-	Error string
+	Error string `json:"error"`
 }
 
 func makeHTTPHandleFunc(f apiFunc) http.HandlerFunc {
@@ -81,4 +103,15 @@ func makeHTTPHandleFunc(f apiFunc) http.HandlerFunc {
 		}
 
 	}
+}
+
+func getIDParam(r *http.Request) (int, error) {
+	idStr := r.PathValue("id")
+	id, err := strconv.Atoi(idStr)
+
+	if err != nil {
+		return 0, fmt.Errorf("invalid id given %s", idStr)
+	}
+
+	return id, nil
 }
